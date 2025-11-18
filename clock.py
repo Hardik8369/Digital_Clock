@@ -1,59 +1,58 @@
 import tkinter as tk
-from time import strftime
 from datetime import datetime
 import requests
 
 # Function to get the current location's city using a geolocation API
 def get_current_city():
     try:
-        response = requests.get("https://ipinfo.io")
+        response = requests.get("https://ipinfo.io", timeout=5)
         data = response.json()
-        return data['city']
-    except Exception as e:
+        return data.get('city', "Unknown Location")
+    except Exception:
         return "Unknown Location"
 
 # Function to get the temperature based on the city
-def get_temperature(city):
+def fetch_temperature(city):
     try:
         api_key = "e12d502fdbc0a174e68aefac471bddcb"  # Replace with your API key
+        if city in (None, "", "Unknown Location"):
+            return "N/A"
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
-        response = requests.get(url)
-        data = response.json()
-        if response.status_code == 200:
-            temp = data['main']['temp']
-            return f"{temp}°C"
+        resp = requests.get(url, timeout=6)
+        data = resp.json()
+        if resp.status_code == 200 and 'main' in data:
+            temp = data['main'].get('temp')
+            return f"{temp}°C" if temp is not None else "N/A"
         else:
             return "N/A"
-    except Exception as e:
+    except Exception:
         return "Error"
 
-# Update the clock
+# Update the clock every second
 def update_clock():
     now = datetime.now()
-    current_time = now.strftime("%H:%M:%S")
-    current_date = now.strftime("%d-%m-%Y")
-    current_day = now.strftime("%A")
-    year = now.year
-    temperature = get_temperature(current_city)
-    
-    # Update labels
-    time_label.config(text=current_time)
-    date_label.config(text=f"Date: {current_date}")
-    day_label.config(text=f"Day: {current_day}")
-    year_label.config(text=f"Year: {year}")
-    temp_label.config(text=f"Temperature in {current_city}: {temperature}")
-    
-    # Call the update function after 500 ms (0.5 second)
-    root.after(500, update_clock)
+    time_label.config(text=now.strftime("%H:%M:%S"))
+    date_label.config(text=f"Date: {now.strftime('%d-%m-%Y')}")
+    day_label.config(text=f"Day: {now.strftime('%A')}")
+    year_label.config(text=f"Year: {now.year}")
 
-# Show welcome screen
-def show_welcome():
-    splash = tk.Toplevel()
+    # schedule next time update after 1000 ms (1 second)
+    root.after(1000, update_clock)
+
+# Update temperature less frequently (every 10 minutes)
+def update_temperature():
+    temperature = fetch_temperature(current_city)
+    temp_label.config(text=f"Temperature in {current_city}: {temperature}")
+    # schedule next temperature update after 10 minutes (600000 ms)
+    root.after(600_000, update_temperature)
+
+# Show welcome splash screen, then build main UI using the same root
+def show_welcome_then_start():
+    splash = tk.Toplevel(root)
     splash.geometry("600x400")
     splash.configure(bg="#2b2d42")
     splash.title("Welcome Screen")
-    
-    # Add 3D style welcome text
+
     welcome_label = tk.Label(
         splash,
         text="Hello, Welcome to Digital Clock!",
@@ -64,28 +63,28 @@ def show_welcome():
         bd=5
     )
     welcome_label.pack(expand=True)
-    
-    # Automatically close the splash screen after 3 seconds
-    splash.after(3000, lambda: (splash.destroy(), start_clock()))
 
-# Start the clock after the welcome screen
-def start_clock():
-    global root
-    root = tk.Tk()
+    # After 3 seconds destroy splash and show main UI (single root)
+    def close_splash_and_show():
+        splash.destroy()
+        build_main_ui()
+        root.deiconify()  # show main window (it was withdrawn)
+
+    splash.after(3000, close_splash_and_show)
+
+# Build the main clock UI on the single root
+def build_main_ui():
     root.title("Digital Clock with Current Location Temperature")
     root.geometry("500x450")
-    root.configure(bg="#2b2d42")  # Background color
+    root.configure(bg="#2b2d42")
     root.resizable(False, False)
 
-    # Create a main frame with border
     frame = tk.Frame(root, bg="#3a3b58", bd=10, relief="ridge")
     frame.pack(padx=20, pady=20, fill="both", expand=True)
 
-    # Add a title
     title_label = tk.Label(frame, text="Digital Clock", font=("Helvetica", 24, "bold"), fg="#8d99ae", bg="#3a3b58")
     title_label.pack(pady=(10, 5))
 
-    # Add labels for time, date, day, year, and temperature
     global time_label, date_label, day_label, year_label, temp_label
     time_label = tk.Label(frame, font=("Helvetica", 48, "bold"), fg="#ef233c", bg="#3a3b58")
     time_label.pack(pady=10)
@@ -102,19 +101,21 @@ def start_clock():
     temp_label = tk.Label(frame, font=("Helvetica", 20), fg="#ffadad", bg="#3a3b58")
     temp_label.pack(pady=(5, 10))
 
-    # Footer with "Designed by Hardikgowda"
     footer_label = tk.Label(root, text="Designed by Hardikgowda", font=("Helvetica", 12), fg="#edf2f4", bg="#2b2d42")
     footer_label.pack(side="bottom", pady=10)
 
-    # Start the clock
+    # Start the periodic updates
     update_clock()
+    update_temperature()
 
-    # Run the application
-    root.mainloop()
+# --- Main program flow ---
+root = tk.Tk()
+root.withdraw()  # hide initial root while splash shows
 
-# Main program flow
 current_city = get_current_city()
-main_window = tk.Tk()
-main_window.withdraw()  # Hide the main window during splash
-show_welcome()  # Show the welcome screen
-main_window.mainloop()
+
+# show splash and then the main UI on the same root
+show_welcome_then_start()
+
+# single mainloop call only
+root.mainloop()
